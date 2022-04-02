@@ -7,6 +7,13 @@ namespace Launcher{
 		public static Options current = new();
 		public Options(){
 			//Defaults here
+			this["WindowTitle"] = "DefaultName";
+			this["IconPath"] = AppDomain.CurrentDomain.BaseDirectory+"Images\\Icon.png";
+			this["BackgroundPath"] = AppDomain.CurrentDomain.BaseDirectory+"Images\\Background.png";
+			this["Repository"] = "";
+			this["Executable"] = "DefaultApp.exe";
+			this["BuildPath"] = AppDomain.CurrentDomain.BaseDirectory+"DefaultName";
+			this["Version"] = "";
 		}
 		public bool Load(string path){
 			if(!File.Exists(path)){return false;}
