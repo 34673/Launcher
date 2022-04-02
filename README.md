@@ -30,6 +30,6 @@ Any available setting can be stored in a configuration file (Options.config).
 - Implement Git interface.
 - Implement full theme support.
 - Implement download/update logs formatting (can use colors from themes).
-- Change logs box display process from converting `StringBuidler` to setting and/or appending the document's runs. Should increase performance and fix weird threading issues.
+- Change logs box display process from converting `StringBuilder` to setting and/or appending the document's runs. Should increase performance and fix weird threading issues.
 - Fix update process not displaying/doing anything.
 - Implement cleanup process.
