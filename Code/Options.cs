@@ -8,14 +8,15 @@ namespace Launcher{
 		public Options(){
 			//Defaults here
 			this["WindowTitle"] = "DefaultName";
-			this["IconPath"] = AppDomain.CurrentDomain.BaseDirectory+"Images\\Icon.png";
-			this["BackgroundPath"] = AppDomain.CurrentDomain.BaseDirectory+"Images\\Background.png";
+			this["IconPath"] = "Images/Icon.png";
+			this["BackgroundPath"] = "Images/Background.png";
 			this["Repository"] = "";
 			this["Executable"] = "DefaultApp.exe";
-			this["BuildPath"] = AppDomain.CurrentDomain.BaseDirectory+"DefaultName";
+			this["BuildPath"] = "DefaultName";
 			this["Version"] = "";
 		}
 		public bool Load(string path){
+			path = Path.GetFullPath(path);
 			if(!File.Exists(path)){return false;}
 			foreach(var line in File.ReadAllLines(path)){
 				var tokens = line.Split("=").Select(x=>x.Trim()).ToArray();
@@ -25,7 +26,7 @@ namespace Launcher{
 		}
 		public void Save(string path){
 			var serialized = this.Select(x=>x.Key+" = "+x.Value);
-			File.WriteAllLines(path,serialized);
+			File.WriteAllLines(Path.GetFullPath(path),serialized);
 		}
 	}
 }

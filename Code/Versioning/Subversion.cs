@@ -1,33 +1,48 @@
 ﻿using System;
 using System.Diagnostics;
+using System.IO;
 using System.Text;
-using System.Threading;
 namespace Launcher.Versioning{
-	public static class Subversion{
-		public static string path = AppDomain.CurrentDomain.BaseDirectory+"Subversion 1.14.1\\bin\\";
-		public static Process process = new();
-		public static StringBuilder output = new();
-		public static string Call(string parameter,DataReceivedEventHandler onReceive=null,EventHandler onExit=null){
-			var resetEvent = new ManualResetEvent(false);
-			Subversion.process = new();
-			Subversion.process.StartInfo = new(Subversion.path+"svn.exe");
-			Subversion.process.StartInfo.Arguments = parameter;
-			Subversion.process.StartInfo.CreateNoWindow = true;
-			Subversion.process.StartInfo.UseShellExecute = false;
-			Subversion.process.StartInfo.RedirectStandardOutput = true;
-			Subversion.process.EnableRaisingEvents = true;
-			Subversion.process.OutputDataReceived += (sender,parameters)=>{
-				if(parameters.Data == null){resetEvent.Set();}
-				else{Subversion.output.AppendLine(parameters.Data);}
-				if(MainWindow.self.process.HasExited){Subversion.process.Kill();}
-			};
-			Subversion.process.Exited += (a,b)=>Subversion.process.CancelOutputRead();
-			if(onReceive != null){Subversion.process.OutputDataReceived += onReceive;}
-			if(onExit != null){Subversion.process.Exited += onExit;}
-			Subversion.output.Clear();
-			Subversion.process.Start();
-			Subversion.process.BeginOutputReadLine();
-			return Subversion.output.ToString();
+	public class Subversion : Versioning{
+		public Subversion(string repository,string localCopy=""){
+			this.repository = repository;
+			this.localCopy = localCopy;
+			this.toolPath = Path.GetFullPath(Options.current["SubversionPath"]);
+		}
+		public override (Process task,StringBuilder output) GetRepository(string version="HEAD",DataReceivedEventHandler onReceive=null,EventHandler onExit=null,DataReceivedEventHandler onError=null){
+			var command = $"checkout --revision {version} {this.repository} {this.localCopy}";
+			return this.Call(command,onReceive,onExit);
+		}
+		public override (Process task,StringBuilder output) ShowLocalVersion(DataReceivedEventHandler onReceive=null,EventHandler onExit=null,DataReceivedEventHandler onError=null){
+			var command = "info --show-item=last-changed-revision "+this.localCopy;
+			return this.Call(command,onReceive,onExit);
+		}
+		public override (Process task,StringBuilder output) ShowLatestVersion(DataReceivedEventHandler onReceive=null,EventHandler onExit=null,DataReceivedEventHandler onError=null){
+			var command = "info --show-item=last-changed-revision "+this.repository;
+			return this.Call(command,onReceive,onExit);
+		}
+		public override (Process task,StringBuilder output) Update(string version="HEAD",DataReceivedEventHandler onReceive=null,EventHandler onExit=null,DataReceivedEventHandler onError=null){
+			var command = $"update --revision {version} {this.localCopy}";
+			return this.Call(command,onReceive,onExit);
+		}
+		public override (Process task,StringBuilder output) Revert(string path,bool recursive=false,DataReceivedEventHandler onReceive=null,EventHandler onExit=null,DataReceivedEventHandler onError=null){
+			var command = "revert ";
+			command += recursive ? "--recursive " : "";
+			command += path;
+			return this.Call(command,onReceive,onExit);
+		}
+		public override (Process task,StringBuilder output) Cleanup(string path,DataReceivedEventHandler onReceive=null,EventHandler onExit=null,DataReceivedEventHandler onError=null){
+			var command = "cleanup "+path;
+			return this.Call(command,onReceive,onExit);
+		}
+		public override (Process task,StringBuilder output) GetLogs(string version="1",string toVersion="HEAD",DataReceivedEventHandler onReceive=null,EventHandler onExit=null,DataReceivedEventHandler onError=null){
+			if(version == ""){version = "1";}
+			if(toVersion == ""){toVersion = "HEAD";}
+			var command = $"log --revision {version}:{toVersion} {this.repository}";
+			return this.Call(command,onReceive,onExit);
+		}
+		public override string LocateCache(string localRoot){
+			return localRoot.EndsWith("/") ? localRoot+".svn/" : localRoot+"/.svn/";
 		}
 	}
 }

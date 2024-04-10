@@ -14,7 +14,7 @@
 			<ColumnDefinition Width="0"/>
 		</Grid.ColumnDefinitions>
 		<Button x:Name="Start" Grid.Column="2" Content="Start" Margin="0,0,28,10" Background="#FFFFBA21" Foreground="White" Click="StartClick" FontSize="18" BorderBrush="#FFC59000" HorizontalAlignment="Right" Width="150" Height="49" VerticalAlignment="Bottom"/>
-		<TextBox x:Name="Path" Margin="31,0,0,18" TextWrapping="Wrap" Text="TextBox" Height="18" VerticalAlignment="Bottom" Background="#4CE6E6E6" Foreground="#FFEDEDED" HorizontalAlignment="Left" Width="536" Grid.Column="2"/>
+		<TextBox x:Name="BuildPath" Margin="31,0,0,18" TextWrapping="Wrap" Text="TextBox" Height="18" VerticalAlignment="Bottom" Background="#4CE6E6E6" Foreground="#FFEDEDED" HorizontalAlignment="Left" Width="536" Grid.Column="2"/>
 		<TextBlock x:Name="PathLabel" Margin="18,0,0,42" TextWrapping="Wrap" Height="16" VerticalAlignment="Bottom" FontWeight="Bold" Foreground="#FFEDEDED" Grid.Column="2" HorizontalAlignment="Left" Width="42"><Run Language="fr-fr" Text="Path"/></TextBlock>
 		<ComboBox x:Name="Version" Margin="0,0,28,72" VerticalContentAlignment="Center" SelectionChanged="VersionChanged" Grid.Column="2" Height="25" VerticalAlignment="Bottom" HorizontalAlignment="Right" Width="81"/>
 		<Label x:Name="VersionLabel" Margin="0,0,108,72" FontWeight="Bold" Foreground="#FFDADADA" Background="#7F504F4F" Content="Version" HorizontalContentAlignment="Center" BorderThickness="1,1,1,1" BorderBrush="#FF7B7676" VerticalContentAlignment="Center" Grid.Column="2" Height="25" VerticalAlignment="Bottom" HorizontalAlignment="Right" Width="70"/>

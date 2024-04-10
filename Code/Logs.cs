@@ -7,25 +7,23 @@ using System.Text.Json;
 using System.Windows.Documents;
 using System.Windows;
 namespace Launcher{
-	using Launcher.Versioning;
 	public static class Logs{
 		public static List<string> raw = new();
 		public static Dictionary<string,List<Run>> formatted = new();
-		public static string path = AppDomain.CurrentDomain.BaseDirectory+"Changelogs.json";
-		static Logs(){Logs.formatted[""] = new(){new("Unknown Revision")};}
+		public static string path = "Changelogs.json";
+		static Logs(){Logs.formatted[""] = new(){new("Unknown Version")};}
 		public static bool Deserialize(){
 			if(!Logs.path.EndsWith(".json")){Logs.path += ".json";}
+			var path = Path.GetFullPath(Logs.path);
 			if(!File.Exists(path)){return false;}
-			var file = File.OpenRead(Logs.path);
+			var file = File.OpenRead(path);
 			var deserialized = JsonSerializer.Deserialize<List<string>>(file);
 			file.Close();
 			if(deserialized == null){return false;}
 			deserialized.ForEach(x=>Logs.Format(x));
 			return true;
 		}
-		public static bool Fetch(string repository,string from="0",string to="HEAD"){
-			var logs = Subversion.Call("log -r "+from+":"+to+" "+repository);
-			if(logs == ""){return false;}
+		public static void Add(string logs){
 			var separator = "------------------------------------------------------------------------"+Environment.NewLine;
 			var raw = logs.Split(separator).Where(x=>x!="").ToList();
 			var serialized = JsonSerializer.Serialize(raw);
@@ -37,7 +35,6 @@ namespace Launcher{
 			}
 			File.AppendAllText(Logs.path,serialized);
 			raw.ForEach(x=>Logs.Format(x));
-			return true;
 		}
 		public static List<Run> Format(string raw){
 			var headerEnd = raw.IndexOf(Environment.NewLine);

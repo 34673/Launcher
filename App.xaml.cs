@@ -6,9 +6,8 @@ namespace Launcher{
     public partial class App : Application{
 		public void Save(object sender,ExitEventArgs parameters){
 			var window = Launcher.MainWindow.self;
-			Options.current["BuildPath"] = window.Path.Text;
-			Options.current["Version"] = window.Version.Text;
-			Options.current.Save(window.basePath+"Options.config");
+			Options.current["BuildPath"] = window.BuildPath.Text;
+			Options.current.Save("Options.config");
 		}
     }
 }

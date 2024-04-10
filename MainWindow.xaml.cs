@@ -10,129 +10,172 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using WinForms = System.Windows.Forms;
 namespace Launcher{
-	using Launcher.Extensions;
 	using Launcher.Versioning;
 	public partial class MainWindow : Window{
 		public static MainWindow self;
 		public string basePath = AppDomain.CurrentDomain.BaseDirectory;
 		public Process process = Process.GetCurrentProcess();
 		public Action startClick = ()=>{};
+		public Subversion versioning;
 		public bool downloading;
 		public MainWindow(){
 			MainWindow.self = this;
-			InitializeComponent();
-			Options.current.Load(this.basePath+"Options.config");
-			var icon = new Uri(Options.current["IconPath"]);
-			var background = new Uri(Options.current["BackgroundPath"]);
+			this.InitializeComponent();
+			Options.current.Load("Options.config");
+			var icon = new Uri(Path.GetFullPath(Options.current["IconPath"]));
+			var background = new Uri(Path.GetFullPath(Options.current["BackgroundPath"]));
 			this.Title = Options.current["WindowTitle"];
 			this.Icon = new BitmapImage(icon);
 			this.Grid.Background = new ImageBrush(new BitmapImage(background));
-			this.SetupLogs();
 			this.SetupPath();
-			this.Version.Loaded += this.SetupVersion;
+			this.SetupVersioning();
 		}
-		public void SetupLogs(){
+		public void SetupVersioning(){
 			var repository = Options.current["Repository"];
-			var exception = new Exception("Unable to query repository.");
-			if(!Logs.Deserialize() && !Logs.Fetch(repository)){/*throw exception;*/}
-			var localHead = Logs.formatted.Keys.Where(x=>x!="").OrderBy(x=>int.Parse(x)).Last();
-			var remoteHead = Subversion.Call("info --show-item revision "+repository).Trim('\r','\n');
-			if(localHead != remoteHead){Logs.Fetch(repository,localHead,remoteHead);}
+			this.LogBox.Text = "Not linked to a repository.";
+			if(repository == ""){
+				throw new("MainWindow.SetupVersioning(): no repository assigned.");
+			}
+			if(repository.StartsWith("svn://")){
+				this.versioning = new Subversion(repository,this.BuildPath.Text);
+			}
+			//else if(repository.EndsWith(".git")){
+			//	this.versioning = new Git(repository);
+			//}
+			if(this.versioning == null){
+				throw new("MainWindow.SetupVersioning(): unknown versioning protocol.");
+			}
+			var error = "MainWindow.SetupVersioning(): couldn't contact the versioning server.";
+			var task = this.versioning.ShowLatestVersion(onError:(a,b)=>throw new(error)).task;
+			task.Exited += (a,b)=>this.Dispatcher.BeginInvoke(()=>this.SetupLogs());
+		}
+		public void SetupLogs(string fromVersion=""){
+			var error = "MainWindow.SetupLogs(): couldn't contact the versioning server.";
+			if(!Logs.Deserialize() || fromVersion != ""){
+				var (task,output) = this.versioning.GetLogs(fromVersion,onError:(a,b)=>throw new(error));
+				task.Exited += (a,b)=>{
+					this.Dispatcher.Invoke(()=>Logs.Add(output.ToString()));
+					this.SetupVersion();
+				};
+				return;
+			}
+			var localLatest = Logs.formatted.Keys.Where(x=>x!="").Max(x=>int.Parse(x)).ToString();
+			var (taskB,remoteLatest) = this.versioning.ShowLatestVersion();
+			taskB.Exited += (a,b)=>{
+				if(localLatest == remoteLatest.ToString().Trim()){
+					this.SetupVersion();
+					return;
+				}
+				this.SetupLogs(localLatest);
+			};
 		}
 		//=======================
 		// Path
 		//=======================
 		public void SetupPath(){
-			this.Path.Text = Options.current["BuildPath"];
+			var path = Options.current["BuildPath"];
 			var pathProperty = DependencyPropertyDescriptor.FromProperty(TextBox.TextProperty,typeof(TextBox));
-			pathProperty.AddValueChanged(this.Path,(a,b)=>this.PathChanged());
+			this.BuildPath.Text = path == "" ? this.basePath+"NewApplication" : Path.GetRelativePath(this.basePath,path); 
+			pathProperty.AddValueChanged(this.BuildPath,(a,b)=>this.PathChanged());
 			this.PathChanged();
 		}
 		public void PathChanged(){
-			var path = this.Path.Text = this.Path.Text.Replace("@Base",this.basePath);
 			if(this.downloading){return;}
-			var buildExists = File.Exists(path+"\\"+Options.current["Executable"]);
+			var path = this.BuildPath.Text+"/"+Options.current["Executable"];
+			var buildExists = File.Exists(Path.GetFullPath(path));
 			this.Start.Content = buildExists ? "Start" : "Download";
 			if(!buildExists){this.startClick = this.DownloadBuild;}
 		}
 		public void PathBrowserClick(object sender,RoutedEventArgs parameters){
 			var browser = new WinForms.FolderBrowserDialog();
 			browser.ShowDialog();
-			this.Path.Text = browser.SelectedPath;
+			this.BuildPath.Text = browser.SelectedPath;
 		}
 		//=======================
 		// Start Button
 		//=======================
 		public void StartClick(object sender,RoutedEventArgs parameters) => this.startClick();
-		public void SetCancel(){
+		public void SetCancel(Process task){
 			var color = Color.FromArgb(255,181,181,180);
 			this.downloading = true;
 			this.Start.Content = "Cancel";
 			this.Start.Background = new SolidColorBrush(color);
-			this.startClick = Subversion.process.Kill;
+			this.startClick = task.Kill;
 		}
 		public void DownloadBuild(){
-			var command = "checkout -r "+this.Version.Text+" "+Options.current["Repository"]+" \""+this.Path.Text+"\"";
-			var svnFiles = new DirectoryInfo(Options.current["BuildPath"]+"\\.svn");
-			if(svnFiles.Exists){
-				svnFiles.SetAttributesRecursive(FileAttributes.Normal);
-				svnFiles.Delete(true);
+			var cache = this.versioning.LocateCache(Path.GetFullPath(Options.current["BuildPath"]));
+			var files = new DirectoryInfo(cache);
+			if(files.Exists){
+				files.GetFiles("*",SearchOption.AllDirectories).ToList().ForEach(x=>x.Attributes = FileAttributes.Normal);
+				files.Delete(true);
 			}
-			Subversion.Call(command,this.GetDownloadLogs,this.DownloadEnded);
-			this.SetCancel();
+			var (task,output) = this.versioning.GetRepository(this.Version.Text,onExit:this.DownloadEnded);
+			task.OutputDataReceived += (a,b)=>this.GetDownloadLogs(output.ToString());
+			this.SetCancel(task);
 		}
-		public void GetDownloadLogs(object sender,DataReceivedEventArgs parameters){
+		public void UpdateBuild(){
+			var cleanup = this.versioning.Cleanup(Path.GetFullPath(Options.current["BuildPath"])).task;
+			var action = ()=>{
+				var (task,output) = this.versioning.Update(this.Version.Text,onExit:this.DownloadEnded);
+				task.OutputDataReceived += (a,b)=>this.GetDownloadLogs(output.ToString());
+				this.SetCancel(task);
+			};
+			cleanup.Exited += (a,b)=>this.Dispatcher.BeginInvoke(action);
+		}
+		public void GetDownloadLogs(string logs){
 			this.Dispatcher.BeginInvoke(()=>{
-				this.LogBox.Text = Subversion.output.ToString();
+				this.LogBox.Text = logs;
 				this.LogSlider.ScrollToEnd();
 			});
 		}
-		public void UpdateBuild(){
-			var command = "update -r "+this.Version.Text+" \""+this.Path.Text+"\"";
-			Subversion.Call("cleanup "+Options.current["BuildPath"]);
-			Subversion.Call(command,this.GetDownloadLogs,this.DownloadEnded);
-			this.SetCancel();
-		}
-		public void DownloadEnded(object sender,EventArgs parameters){
-			var color = Color.FromArgb(255,255,186,33);
+		public void DownloadEnded(object? sender,EventArgs parameters){
 			var action = ()=>{
+				var color = Color.FromArgb(255,255,186,33);
+				this.downloading = false;
 				this.Start.Background = new SolidColorBrush(color);
 				this.PathChanged();
-				this.VersionChanged(null,null);
+				this.VersionChanged();
 			};
-			this.downloading = false;
-			this.Dispatcher.Invoke(action);
+			this.Dispatcher.BeginInvoke(action);
 		}
 		public void StartBuild(){
-			var path = this.Path.Text;
-			Directory.SetCurrentDirectory(path);
-			Process.Start(path+"\\"+Options.current["Executable"]);
-			Directory.SetCurrentDirectory(this.basePath);
+			var path = Path.GetFullPath(this.BuildPath.Text);
+			var startInfo = new ProcessStartInfo();
+			startInfo.FileName = path+"/"+Options.current["Executable"];
+			startInfo.UseShellExecute = true;
+			Process.Start(startInfo);
 		}
 		//=======================
 		// Version List
 		//=======================
-		public void SetupVersion(object sender,EventArgs parameters){
-			var template = this.Version.Template;
-			var popup = template.FindName("PART_Popup",this.Version) as Popup;
-			popup.Placement = PlacementMode.Top;
-			foreach(var item in Logs.formatted.Keys){
-				if(item == ""){continue;}
-				this.Version.Items.Add(item);
-			}
-			this.Version.SelectedValue = Options.current["Version"];
-			this.Version.MaxDropDownHeight /= 2;
+		public void SetupVersion(){
+			var action = ()=>{
+				var template = this.Version.Template;
+				var popup = template.FindName("PART_Popup",this.Version) as Popup;
+				popup!.Placement = PlacementMode.Top;
+				foreach(var item in Logs.formatted.Keys.OrderByDescending(x=>x)){
+					if(item == ""){continue;}
+					this.Version.Items.Add(item);
+				}
+				var previousSelected = Options.current["Version"];
+				this.Version.SelectedValue = previousSelected == "" ? this.Version.Items[0] : previousSelected;
+				this.Version.MaxDropDownHeight /= 2;
+			};
+			this.Dispatcher.Invoke(action);
 		}
-		public void VersionChanged(object sender,SelectionChangedEventArgs parameters){
-			var buildExists = File.Exists(this.Path.Text+"\\"+Options.current["Executable"]);
-			var command = "info --show-item last-changed-revision \""+this.Path.Text+"\"";
-			var (selected,installed) = (this.Version.SelectedValue.ToString(),Subversion.Call(command).Trim());
-			var (name,action) = selected != installed ? ("Update",(Action)this.UpdateBuild) : ("Start",this.StartBuild);
-			this.LogBox.Text = "";
-			Logs.formatted[selected].ForEach(x=>this.LogBox.Inlines.Add(x));
-			if(!buildExists || this.downloading){return;}
-			this.Start.Content = name;
-			this.startClick = action;
+		public void VersionChanged(object sender=null,SelectionChangedEventArgs parameters=null){
+			var buildExists = File.Exists(this.BuildPath.Text+"/"+Options.current["Executable"]);
+			var (task,output) = this.versioning.ShowLocalVersion();
+			var action = ()=>{
+				var (selected,installed) = (this.Version.SelectedValue.ToString(),output.ToString().Trim());
+				Options.current["Version"] = installed;
+				this.LogBox.Text = "";
+				this.LogBox.Inlines.AddRange(Logs.formatted[selected]);
+				if(!buildExists || this.downloading){return;}
+				this.Start.Content = selected != installed ? "Update" : "Start";
+				this.startClick = selected != installed ? this.UpdateBuild : this.StartBuild;
+			};
+			task.Exited += (a,b)=>this.Dispatcher.BeginInvoke(action);
 		}
     }
 }
